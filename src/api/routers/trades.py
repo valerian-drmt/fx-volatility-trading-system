@@ -33,7 +33,7 @@ from shared.internal_auth import internal_headers
 
 _EXECUTION_URL = get_settings().EXECUTION_URL
 # Non-terminal order states an operator can cancel from the blotter.
-_CANCELLABLE_STATES = ("pending", "submitted", "acknowledged", "partially_filled")
+_CANCELLABLE_STATES = ("pending", "submitted", "partially_filled")
 
 router = APIRouter(prefix="/api/v1/trades", tags=["trades"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -251,6 +251,7 @@ async def cancel_trade(
                 # IB took the request. The row is NOT cancelled yet (#487): it
                 # becomes so when IB confirms, through the status handler. It
                 # used to be written cancelled here, before IB had answered.
+                o.cancel_requested_at = now   # the desk asked: it ends "cancelled" (#485)
                 results.append({"order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True, "status": "cancel_requested"})
                 requested += 1
         except HTTPException as e:

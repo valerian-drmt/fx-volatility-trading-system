@@ -696,7 +696,7 @@ class TradeStructure(Base):
     __tablename__ = "trade_structure"  # renamed in migration 025
     __table_args__ = (
         CheckConstraint(
-            "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')",
+            "state IN ('submitted','fully_filled','partial_fail','fully_failed','closed')",
             name="ck_trade_structures_state",
         ),
         Index("ix_trade_structures_state", "state", "created_at"),  # migration 014
@@ -761,7 +761,7 @@ class StructureOrder(Base):
             name="uq_structure_orders_structure_leg_role",
         ),
         CheckConstraint(
-            "state IN ('pending','submitted','acknowledged','partially_filled','filled','rejected','cancelled','expired')",
+            "state IN ('pending','submitted','partially_filled','filled','rejected','cancelled','expired')",
             name="ck_structure_orders_state",
         ),
         CheckConstraint("side IN ('BUY','SELL')", name="ck_structure_orders_side"),
@@ -806,6 +806,9 @@ class StructureOrder(Base):
     submit_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the desk asked the broker to cancel this order (#485). An order the
+    # broker ends without it was not cancelled by us: it expired.
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_code: Mapped[str | None] = mapped_column(String(20))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

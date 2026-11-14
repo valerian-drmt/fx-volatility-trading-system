@@ -35,12 +35,13 @@ from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import _lock_for, maybe_complete_structure, persist_fill, settle_book
 from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent, TradeStructure
+from persistence.order_state import apply_fill_state, lock_order
 from persistence.projection import rebuild_leg
 
 logger = logging.getLogger(__name__)
 
 # Orders in these states are "stuck" (never reached a terminal state).
-_STUCK_STATES = ("submitted", "acknowledged", "partially_filled")
+_STUCK_STATES = ("submitted", "partially_filled")
 # CME EUR FOP strikes sit on a 0.005 grid ; allow a touch more for float noise.
 _STRIKE_TOL = 0.006
 
@@ -82,12 +83,12 @@ async def _settle_from_recorded_fills(
         new_state = state_from_recorded_fills(recorded, int(o.qty), o.state)
         if new_state is None:
             return None, None
-        o.state = new_state
-        o.state_updated_at = now
+        await lock_order(db, o)
+        if o.state not in _STUCK_STATES:
+            return None, None
+        apply_fill_state(o, fully_filled=new_state == "filled", now=now)
         o.qty_filled = min(recorded, int(o.qty))
         await rebuild_leg(db, order_id=order_id)  # keep the projection in step (I3)
-        if new_state == "filled":
-            o.fully_filled_at = now
         sid = int(o.structure_id)
         await db.commit()
         return new_state, sid

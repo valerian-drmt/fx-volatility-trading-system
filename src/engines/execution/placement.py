@@ -145,7 +145,18 @@ async def stamp_placement(
         k: v for k, v in contract_identity(getattr(trade, "contract", None)).items() if hasattr(model, k)
     }
     async with sm() as db:
-        await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
+        if getattr(model, "__tablename__", "") == "trade_order":
+            # An order row is only moved forward (#489): the handlers are
+            # attached before this runs on some paths, and a fill or a reject
+            # they booked must not be written over with "submitted".
+            values.pop("state")
+            values.pop("state_updated_at", None)
+            await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
+            await db.execute(
+                update(model).where(model.id == row_id).where(model.state == "pending")
+                .values(state=state, state_updated_at=datetime.now(UTC)))
+        else:
+            await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
         if ident:
             try:
                 async with db.begin_nested():

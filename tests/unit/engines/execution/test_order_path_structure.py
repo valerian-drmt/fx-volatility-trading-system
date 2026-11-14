@@ -26,7 +26,13 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
-from persistence.order_state import end_order, finalise_structure_if_done
+from persistence.order_state import (
+    apply_fill_state,
+    end_order,
+    finalise_structure_if_done,
+    mark_submitted,
+    state_of_broker_cancel,
+)
 from persistence.reservation import recompute_reservation
 
 pytestmark = pytest.mark.unit
@@ -104,30 +110,79 @@ async def test_a_trade_waits_for_all_its_entries_and_ignores_a_hedge_that_ended(
         assert b.state == "filled"
 
 
-def test_no_other_code_ends_an_order_by_hand() -> None:
-    """New code must go through ``end_order``. The files below still write an
-    ended state themselves; the list may only shrink."""
-    still_by_hand = {
-        "src/api/routers/positions.py",          # close dispatch failures
-        "src/api/orchestration/position_close.py",
-        "src/engines/execution/live_submit.py",
-        "src/engines/execution/rollback_runner.py",
-        "src/engines/execution/package_hedge.py",  # a hedge that could not be placed
-        "src/engines/execution/fills_handler.py",  # the combo path
-        "src/persistence/order_state.py",
-        # not orders: a preview being cancelled, a booked position expiring
-        "src/api/routers/trade.py",
-        "src/persistence/book_close.py",
+def test_no_code_writes_an_order_state_outside_order_state() -> None:
+    """#489: ``persistence.order_state`` is the one writer. Every assignment
+    to ``.state`` left in ``src`` is on another kind of row (a trade, a
+    preview, a booked position, a spot or hedge order). A new line here is a
+    decision: an order row goes through ``order_state``."""
+    not_orders = {
+        ("src/api/orchestration/position_close.py", 'pos.state = "closing"'),
+        ("src/api/orchestration/position_close.py", 'pos.state = "open"'),
+        ("src/api/orchestration/position_close.py", 'struct.state = "fully_failed"'),
+        ("src/api/routers/positions.py", 'pos.state = "closing"'),
+        ("src/api/routers/trade.py", 'preview.state = "submitted"'),
+        ("src/api/routers/trade.py", 'structure.state = "fully_filled"'),
+        ("src/api/routers/trade.py", 'row.state = "cancelled"'),
+        ("src/api/routers/trades.py", "struct.state = new_state"),
+        ("src/engines/execution/fills_handler.py", 'struct.state = "fully_filled"'),
+        ("src/engines/execution/hedge_executor.py", 'hedge.state = "failed"'),
+        ("src/engines/execution/hedge_executor.py", 'hedge.state = "filled"'),
+        ("src/engines/execution/ib_session.py", 'struct.state = "submitted"'),
+        ("src/engines/execution/ib_session.py", "self.state = SessionState()"),
+        ("src/engines/execution/live_submit.py", 'failed_struct.state = "partial_fail"'),
+        ("src/engines/execution/manual_tickets.py", 'struct.state = "fully_failed"'),
+        ("src/engines/execution/position_close_finaliser.py", 'pos.state = "closed"'),
+        ("src/engines/execution/spot_orders.py", "row.state = new_state"),
+        ("src/engines/execution/spot_orders.py", 'row.state = "filled"'),
+        ("src/engines/execution/spot_orders.py", 'row.state = "partially_filled"'),
+        ("src/engines/execution/spot_orders.py", 'row.state = "rejected"'),
+        ("src/persistence/book_close.py", 'struct.state = "closed"'),
+        ("src/persistence/book_close.py", 'pos.state = "expired" if reason == REASON_EXPIRY else "closed"'),
     }
-    pattern = re.compile(r"""\.state\s*=\s*["'](cancelled|rejected|expired)["']""")
-    offenders = set()
+    pattern = re.compile(r"^\s*(\w+(?:\.\w+)*\.state\s*=[^=].*?)\s*(?:#.*)?$")
+    found = set()
     for path in (ROOT / "src").rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
-        if "migrations" in rel or "spot_orders" in rel or "hedge_executor" in rel:
-            continue   # other tables (spot_order, hedge_order) and data migrations
-        if pattern.search(path.read_text(encoding="utf-8")):
-            offenders.add(rel)
-    assert offenders <= still_by_hand, f"new direct writers: {sorted(offenders - still_by_hand)}"
+        if "migrations" in rel or rel == "src/persistence/order_state.py":
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = pattern.match(line)
+            if m:
+                found.add((rel, m.group(1).strip()))
+    assert found <= not_orders, f"new direct writers of a state: {sorted(found - not_orders)}"
+    # a state written through a variable was invisible to the old check
+    assert not [f for f in found if re.match(r"(o|order|\w+_order)\.state", f[1])]
+
+
+async def test_a_row_is_never_moved_back_to_submitted(sqlite_sessionmaker: Any) -> None:
+    """The api wrote "submitted" on a close after the engine answered, over
+    the fill the handler had booked while the answer travelled."""
+    async with sqlite_sessionmaker() as db:
+        struct = await _trade(db)
+        o = await _order(db, struct, state="pending", ib_id=None)
+        assert await mark_submitted(db, o, ib_order_id="77", now=NOW) is True
+        assert (o.state, o.ib_order_id) == ("submitted", "77")
+        o.state = "filled"
+        await db.flush()
+        assert await mark_submitted(db, o, ib_order_id="78", now=NOW) is False
+        assert (o.state, o.ib_order_id) == ("filled", "77")
+
+
+def test_fills_never_downgrade_a_row() -> None:
+    o = StructureOrder(state="submitted", qty=10)
+    assert apply_fill_state(o, fully_filled=False, now=NOW) == "partially_filled"
+    assert apply_fill_state(o, fully_filled=True, now=NOW) == "filled"
+    assert apply_fill_state(o, fully_filled=False, now=NOW) is None and o.state == "filled"
+    ended = StructureOrder(state="expired", qty=10)
+    assert apply_fill_state(ended, fully_filled=False, now=NOW) is None and ended.state == "expired"
+    # the whole quantity filled after all: the fills are the truth
+    assert apply_fill_state(ended, fully_filled=True, now=NOW) == "filled"
+
+
+def test_the_end_of_an_order_has_one_rule() -> None:
+    """#485: cancelled when the desk asked, expired when the broker ended it."""
+    assert state_of_broker_cancel(StructureOrder(state="submitted")) == "expired"
+    assert state_of_broker_cancel(StructureOrder(state="submitted", cancel_requested_at=NOW)) == "cancelled"
 
 
 # ── #490: nothing is left half-done ──────────────────────────────────────────

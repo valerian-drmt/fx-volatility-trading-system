@@ -303,7 +303,7 @@ async def test_refuses_structure_not_in_submitted_state(monkeypatch):
 
     maker, engine = await _make_session()
     try:
-        struct_id, _ = await _seed(maker, struct_state="partial_fill", legs=1)
+        struct_id, _ = await _seed(maker, struct_state="fully_filled", legs=1)
         ib = _FakeIB()
         with pytest.raises(LiveSubmitError, match="only allowed from 'submitted'"):
             await submit_structure_live(

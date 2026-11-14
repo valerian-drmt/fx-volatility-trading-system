@@ -135,7 +135,7 @@ async def test_find_stuck_orders_filters_by_state_and_age():
             db.add(StructureOrder(
                 id=1, structure_id=struct.id, leg_idx=0,
                 contract_type="call", side="BUY", qty=1, order_type="LMT",
-                limit_price=1.0, state="acknowledged", submitted_at=old,
+                limit_price=1.0, state="submitted", submitted_at=old,
             ))
             # Stuck (submitted, no ack yet, 15 min)
             db.add(StructureOrder(
@@ -147,7 +147,7 @@ async def test_find_stuck_orders_filters_by_state_and_age():
             db.add(StructureOrder(
                 id=3, structure_id=struct.id, leg_idx=2,
                 contract_type="call", side="SELL", qty=1, order_type="LMT",
-                limit_price=1.0, state="acknowledged", submitted_at=recent,
+                limit_price=1.0, state="submitted", submitted_at=recent,
             ))
             # Filled (should NOT trigger regardless of age)
             db.add(StructureOrder(
@@ -162,7 +162,7 @@ async def test_find_stuck_orders_filters_by_state_and_age():
                 db, now=now, stuck_after_seconds=600.0,
             )
         states = sorted(o.state for o in stuck)
-        assert states == ["acknowledged", "submitted"]
+        assert states == ["submitted", "submitted"]
         # sqlite drops tzinfo ; coerce both sides to naive for the comparison.
         cutoff_naive = (now - timedelta(seconds=600)).replace(tzinfo=None)
         assert all(o.submitted_at.replace(tzinfo=None) < cutoff_naive for o in stuck)
@@ -192,7 +192,7 @@ async def test_already_alerted_recently_dedupes_by_order_id():
             order = StructureOrder(
                 id=1, structure_id=struct.id, leg_idx=0,
                 contract_type="call", side="BUY", qty=1, order_type="LMT",
-                limit_price=1.0, state="acknowledged",
+                limit_price=1.0, state="submitted",
                 submitted_at=now - timedelta(minutes=20),
             )
             db.add(order)

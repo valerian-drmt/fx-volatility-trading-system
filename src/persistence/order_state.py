@@ -1,4 +1,4 @@
-"""The one place an order is recorded as ENDED without a fill (#489).
+"""The one place an order's state is written (#489).
 
 An order ends unfilled in three ways: IB rejects it, it is cancelled, or it
 expires. Four components used to write those states, each in its own way, and
@@ -17,8 +17,23 @@ each updated a different part of what must follow:
 2. the reservation of the leg it was closing;
 3. the state of its trade, when every order that defines it has ended.
 
-Filled orders do not come through here: a fill is booked by the fill handler,
-which owns that edge.
+The other edges are here too, so that no component assigns ``state`` itself:
+
+* ``mark_submitted``: pending to submitted, never backwards. The api used to
+  write ``submitted`` on a close after the engine answered, over a fill the
+  handler had booked in between.
+* ``apply_fill_state``: what the recorded fills say (partly filled, filled).
+* ``revive_order``: an ended row that IB still lists as open.
+
+Every function takes the database row lock first (``lock_order``): the api and
+the engine are two processes, and the engine's in-memory lock never excluded
+the api.
+
+One rule for an order that ends without a fill (#485): it is ``cancelled``
+when the desk asked for the cancel (``cancel_requested_at``), ``rejected``
+when the broker gave a reason, and ``expired`` otherwise, whoever sees it
+first. A DAY order the broker ends at the close of the day is therefore
+``expired`` from the status handler as from the reaper.
 """
 from __future__ import annotations
 
@@ -35,10 +50,82 @@ from persistence.reservation import recompute_reservation
 logger = logging.getLogger(__name__)
 
 ENDED_STATES = ("cancelled", "rejected", "expired")
+EXPIRED_AT_BROKER = "ended unfilled at the broker, with no cancel from the desk"
+
+
+async def lock_order(db: AsyncSession, order: StructureOrder) -> None:
+    """Take the row lock on ``order`` and read it as it is NOW. Held until the
+    caller's transaction ends. What the caller already changed is flushed
+    first, so nothing is lost by the re-read."""
+    await db.flush()
+    await db.refresh(order, with_for_update=True)
+
+
+def state_of_broker_cancel(order: StructureOrder) -> str:
+    """The state of an order the broker reports cancelled with no reason."""
+    return "cancelled" if order.cancel_requested_at is not None else "expired"
+
+
+async def mark_submitted(
+    db: AsyncSession, order: StructureOrder, *,
+    ib_order_id: str | None = None, ib_perm_id: str | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Record that the order left for the broker. Only a ``pending`` row moves;
+    a row a handler already took further (filled, ended) keeps its state. The
+    broker's ids are recorded either way. True when the state moved. Caller
+    commits."""
+    await lock_order(db, order)
+    now = now or datetime.now(UTC)
+    if ib_order_id and not order.ib_order_id:
+        order.ib_order_id = ib_order_id
+    if ib_perm_id and not order.ib_perm_id:
+        order.ib_perm_id = ib_perm_id
+    if order.submitted_at is None:
+        order.submitted_at = now
+    if order.state != "pending":
+        return False
+    order.state = "submitted"
+    order.state_updated_at = now
+    return True
+
+
+def apply_fill_state(order: StructureOrder, *, fully_filled: bool, now: datetime | None = None) -> str | None:
+    """Write what the recorded fills say. A filled order stays filled; an
+    order that ended stays ended when a late partial fill is booked on it (it
+    used to flip back and be expired again). Returns the state written, or
+    None when the row is left as it is. The caller holds the lock."""
+    now = now or datetime.now(UTC)
+    if fully_filled:
+        if order.state == "filled":
+            return None
+        order.state = "filled"
+        order.state_updated_at = now
+        order.fully_filled_at = order.fully_filled_at or now
+        # a filled order was not refused: a notice kept from before the fill
+        # (10349, a price cap) is not shown as a reason
+        order.rejection_text = None
+        return "filled"
+    if order.state in TERMINAL_STATES or order.state == "partially_filled":
+        return None
+    order.state = "partially_filled"
+    order.state_updated_at = now
+    return "partially_filled"
+
+
+def revive_order(order: StructureOrder, *, now: datetime | None = None) -> None:
+    """An ended row the broker still lists as OPEN goes back to submitted: the
+    broker is the authority on its own orders. The caller holds the lock."""
+    now = now or datetime.now(UTC)
+    order.state = "submitted"
+    order.state_updated_at = now
+    order.rejected_at = None
+    order.rejection_text = None
+    order.acknowledged_at = order.acknowledged_at or now
 # A trade whose state can still be decided by its orders ending. A trade that
 # filled, failed or closed is not rewritten because an order added to it later
 # (a hedge, an unwind) ended.
-_UNDECIDED = ("submitted", "partial_fill")
+_UNDECIDED = ("submitted",)
 
 
 async def finalise_structure_if_done(
@@ -83,6 +170,7 @@ async def end_order(
     rewritten. Caller commits."""
     if state not in ENDED_STATES:
         raise ValueError(f"end_order writes {ENDED_STATES}, not {state!r}")
+    await lock_order(db, order)
     if order.state in TERMINAL_STATES:
         return False
     now = now or datetime.now(UTC)

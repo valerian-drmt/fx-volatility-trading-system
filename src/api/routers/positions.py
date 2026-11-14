@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -58,6 +58,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import end_order, mark_submitted
 from persistence.reservation import recompute_reservation
 from shared.internal_auth import internal_headers
 from shared.trace import current_trace_id
@@ -1120,17 +1121,23 @@ async def close_one_open_position(
     # pass the check). A no-op on engines without row locks.
     await db.execute(select(OpenPosition.id).where(OpenPosition.id == pos.id).with_for_update())
     contract_kind = (spec.option_type or "").lower() if is_option else "future"
+    # The guard keys on the CONTRACT (#486): the close row carries the
+    # position's IB symbol from its creation. Side, expiry, strike and kind
+    # only matched rows written before that (a 6E and an M6E future of the
+    # same month shared one budget).
+    legacy = [
+        StructureOrder.ib_local_symbol.is_(None),
+        StructureOrder.contract_expiry == pos.expiry,
+        StructureOrder.contract_type == contract_kind,
+    ]
+    if strike_val is not None:
+        legacy.append(StructureOrder.contract_strike == strike_val)
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
-        StructureOrder.contract_expiry == pos.expiry,
-        # the same kind of contract: a call and a put with the same strike and
-        # expiry no longer share one budget
-        StructureOrder.contract_type == contract_kind,
-        StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled")),
+        StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
+        or_(StructureOrder.ib_local_symbol == pos.structure, and_(*legacy)),
     ]
-    if strike_val is not None:
-        inflight_conds.append(StructureOrder.contract_strike == strike_val)
     # Sum the still-in-flight remaining qty in Python via the pure predicate — the
     # self-heal boundary (incl. the never-dispatched submitted_at IS NULL case)
     # lives in one tested place instead of drifting inside a SQL expression.
@@ -1220,7 +1227,7 @@ async def close_one_open_position(
         state="pending",
         trace_id=trace_id,
         closes_order_id=entry_order_id,
-        **contract_fields,
+        **{**contract_fields, "ib_local_symbol": str(pos.structure)[:20]},
     )
     db.add(closing_order)
     if entry_order_id is not None:
@@ -1274,9 +1281,10 @@ async def close_one_open_position(
         if outcome == "not_sent":
             # The request never reached the engine: nothing is live at IB, the
             # close is safely dead and the operator can retry.
-            closing_struct.state = "partial_fail"
-            closing_order.state = "rejected"
-            closing_order.rejection_text = f"execution-engine unreachable: {type(e).__name__}"
+            # end_order: the row, the leg it reserved (it stayed reserved
+            # here) and the ticket's state (#489)
+            await end_order(db, closing_order, "rejected",
+                            reason=f"execution-engine unreachable: {type(e).__name__}")
             await db.commit()
             raise HTTPException(503, detail={
                 "error": "execution_engine_unreachable",
@@ -1289,8 +1297,7 @@ async def close_one_open_position(
         # guard ignores rejected rows. Keep it in flight instead: state
         # 'submitted' + submitted_at = now, so the guard counts it for the
         # in-flight window and the reconciler / fills handler settle it.
-        closing_order.state = "submitted"
-        closing_order.submitted_at = datetime.now(UTC)
+        await mark_submitted(db, closing_order)
         db.add(TradeEvent(
             structure_id=closing_struct.id,
             event_type="close_dispatch_timeout",
@@ -1320,23 +1327,23 @@ async def close_one_open_position(
             detail = r.json().get("detail", r.text)
         except Exception:
             detail = r.text
-        closing_struct.state = "partial_fail"
-        closing_order.state = "rejected"
-        closing_order.rejection_text = str(detail)[:300]
+        await end_order(db, closing_order, "rejected", reason=str(detail))
         await db.commit()
         raise HTTPException(r.status_code, detail)
 
     ib_response = r.json()
 
     # ── 3. Stamp IB orderId + flip the leg state to 'submitted'. ──
+    # mark_submitted re-reads the row under its lock: the engine's handlers
+    # are live by now, and a fill they booked while the answer travelled was
+    # written over with "submitted" here (#489).
     ib_order_id = ib_response.get("order_id")
-    if ib_order_id is not None:
-        closing_order.ib_order_id = str(ib_order_id)
     perm_id = ib_response.get("perm_id")
-    if perm_id is not None:
-        closing_order.ib_perm_id = str(perm_id)
-    closing_order.state = "submitted"
-    closing_order.submitted_at = datetime.now(UTC)
+    await mark_submitted(
+        db, closing_order,
+        ib_order_id=str(ib_order_id) if ib_order_id is not None else None,
+        ib_perm_id=str(perm_id) if perm_id is not None else None,
+    )
     # The row says what was SENT (#492): the engine prices an option close off
     # the live quote, so the price at the broker is its answer, not our guess.
     sent_price = ib_response.get("limit_price")

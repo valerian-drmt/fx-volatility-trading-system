@@ -50,6 +50,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import mark_submitted
 from shared.trace import current_request_start
 
 logger = logging.getLogger(__name__)
@@ -364,10 +365,10 @@ async def submit_structure_live(
             )
             now = datetime.now(UTC)
             for order in orders:
-                order.ib_order_id = str(trade.order.orderId)
-                order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
-                order.state = "submitted"
-                order.submitted_at = now
+                await mark_submitted(
+                    db, order, now=now, ib_order_id=str(trade.order.orderId),
+                    ib_perm_id=str(trade.order.permId) if trade.order.permId else None,
+                )
                 # each leg carries its own contract, not the BAG's
                 await record_contract(db, order, leg_contracts.get(int(order.id)))
             net_price = co.get("lmtPrice")  # None for a market BAG
@@ -502,10 +503,16 @@ async def submit_structure_live(
 
                 note_submit_start(("trade_order", int(order.id)), submit_t0)
                 trade = ib.placeOrder(contract, ib_order)
-                order.ib_order_id = str(trade.order.orderId)
-                order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
-                order.state = "submitted"
-                order.submitted_at = datetime.now(UTC)
+                # Handlers first, before anything can yield (#490): a fill
+                # that arrived during the commit below used to find no
+                # handler and wait for the executions sweep.
+                attach_fill_handlers(
+                    trade=trade, order_id=int(order.id), sessionmaker_factory=sm,
+                )
+                await mark_submitted(
+                    db, order, ib_order_id=str(trade.order.orderId),
+                    ib_perm_id=str(trade.order.permId) if trade.order.permId else None,
+                )
                 await record_contract(db, order, contract)
                 leg_summary = {
                     "leg_idx": order.leg_idx,
@@ -513,10 +520,6 @@ async def submit_structure_live(
                     "ib_order_id": order.ib_order_id,
                 }
                 await db.commit()   # per-leg durability — DB never lags IB
-                attach_fill_handlers(
-                    trade=trade, order_id=leg_summary["order_id"],
-                    sessionmaker_factory=sm,
-                )
                 placed.append(leg_summary)
         except Exception as e:
             # Legs already placed are committed and stay visible. Mark the
@@ -536,6 +539,9 @@ async def submit_structure_live(
                 try:
                     if await executor.cancel_order(int(leg["ib_order_id"])) is not None:
                         pulled.append(int(leg["order_id"]))
+                        row = await db.get(StructureOrder, int(leg["order_id"]))
+                        if row is not None:
+                            row.cancel_requested_at = datetime.now(UTC)
                 except Exception:
                     logger.exception("partial_failure_cancel_failed order_id=%s", leg.get("order_id"))
             db.add(TradeEvent(

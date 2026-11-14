@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from redis import asyncio as aioredis
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
@@ -925,6 +926,14 @@ async def halt_cancel_all(
     ex: OrderExecutor = request.app.state.executor
     ib = ex._ib if ex.is_connected() else None
     result = await cancel_all_open(ib) if ib is not None else {"cancelled": 0, "failed": 0, "global_cancel": 0, "ib": "disconnected"}
+    if ib is not None:
+        # the desk asked for these cancels: the rows end "cancelled" (#485)
+        async with sm() as db:
+            await db.execute(
+                update(StructureOrder)
+                .where(StructureOrder.state.in_(("pending", "submitted", "partially_filled")))
+                .values(cancel_requested_at=datetime.now(UTC)))
+            await db.commit()
     await _log_event(sm, action_type="HALT_CANCEL_ALL", request_payload={}, response_payload=result, success=True)
     logger.error("trading_halted_cancel_all result=%s", result)
     return result

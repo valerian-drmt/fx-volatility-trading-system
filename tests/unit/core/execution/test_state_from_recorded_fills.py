@@ -14,7 +14,7 @@ def test_recorded_fills_cover_qty_but_state_stuck_becomes_filled() -> None:
     # The '10/10 still submitted' case: fills recorded, state never advanced.
     assert state_from_recorded_fills(10, 10, "submitted") == "filled"
     assert state_from_recorded_fills(10, 10, "partially_filled") == "filled"
-    assert state_from_recorded_fills(12, 10, "acknowledged") == "filled"  # over-covered
+    assert state_from_recorded_fills(12, 10, "submitted") == "filled"  # over-covered
 
 
 def test_partial_recorded_but_still_submitted_becomes_partially_filled() -> None:

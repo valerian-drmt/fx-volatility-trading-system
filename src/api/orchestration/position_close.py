@@ -34,6 +34,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import end_order
 from persistence.reservation import recompute_reservation
 from shared.internal_auth import internal_headers
 
@@ -233,15 +234,9 @@ async def _revert_refused_close(
         orders = (await db.execute(
             select(StructureOrder).where(StructureOrder.structure_id == closing_structure_id)
         )).scalars().all()
-        touched: set[int] = set()
         for o in orders:
             if o.state == "pending":
-                o.state = "rejected"
-            if o.closes_order_id is not None:
-                touched.add(int(o.closes_order_id))
-        await db.flush()
-        for eid in touched:
-            await recompute_reservation(db, entry_order_id=eid)
+                await end_order(db, o, "rejected", reason="close not placed")
         if exit_alert_id is not None:
             alert = await db.get(ExitAlert, exit_alert_id)
             if alert is not None:

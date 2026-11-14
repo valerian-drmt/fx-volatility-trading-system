@@ -168,10 +168,34 @@ async def test_on_order_status_marks_cancelled():
     maker, engine = await _make_session()
     try:
         _struct_id, order_ids = await _seed_structure(maker)
+        # the desk asked for the cancel: the row ends cancelled
+        async with maker() as db:
+            (await db.get(StructureOrder, order_ids[0])).cancel_requested_at = datetime.now(UTC)
+            await db.commit()
         await _on_order_status(_fake_trade(status="Cancelled"), order_ids[0], maker)
         async with maker() as db:
             order = await db.get(StructureOrder, order_ids[0])
         assert order.state == "cancelled"
+    finally:
+        await engine.dispose()
+
+
+async def test_an_order_the_broker_ends_on_its_own_is_expired():
+    """#485: a DAY order IB ends at the close of the day reports Cancelled
+    with no reason and no cancel of ours. It read "cancelled" from this
+    handler and "expired" from the reaper, depending on who saw it first."""
+    from engines.execution.fills_handler import _on_order_status
+    from persistence.models import StructureOrder
+    from persistence.order_state import EXPIRED_AT_BROKER
+
+    maker, engine = await _make_session()
+    try:
+        _struct_id, order_ids = await _seed_structure(maker)
+        await _on_order_status(_fake_trade(status="Cancelled"), order_ids[0], maker)
+        async with maker() as db:
+            order = await db.get(StructureOrder, order_ids[0])
+        assert order.state == "expired"
+        assert order.rejection_text == EXPIRED_AT_BROKER
     finally:
         await engine.dispose()
 

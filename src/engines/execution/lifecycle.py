@@ -47,7 +47,7 @@ LIFECYCLE_INTERVAL_S = 3600.0
 # A leg on a contract the broker has not held, with no execution on that
 # contract for this long, is an error in the book and is written off.
 WRITEOFF_AFTER = timedelta(hours=24)
-_CLOSABLE = ("partial_fill", "fully_filled", "partial_fail")
+_CLOSABLE = ("fully_filled", "partial_fail")
 
 
 async def expire_legs(db: AsyncSession, *, today: date, now: datetime) -> dict[str, Any]:
@@ -120,7 +120,7 @@ async def write_off_unheld(db: AsyncSession, *, now: datetime) -> dict[str, Any]
     # a close still working on the contract means it is being dealt with
     working = set((await db.execute(
         select(StructureOrder.ib_local_symbol)
-        .where(StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled")))
+        .where(StructureOrder.state.in_(("pending", "submitted", "partially_filled")))
         .where(StructureOrder.ib_local_symbol.is_not(None))
     )).scalars().all())
     cutoff = now - WRITEOFF_AFTER
