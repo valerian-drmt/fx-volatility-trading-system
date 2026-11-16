@@ -57,7 +57,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7.4.12-alpine3.22@sha256:acc6f0ac39f6fe3a39c57b3c943832f24f4eeff4e17f24960668e37d1e112a36
+    image: redis:7.4.12-alpine3.22@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: fxvol-redis
     mem_limit: 320m
     cpu_shares: 256
