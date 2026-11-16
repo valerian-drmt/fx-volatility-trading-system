@@ -506,7 +506,7 @@ services:
     # IBC dies "version X not installed". Bump this pin deliberately + refresh
     # the volume install (infrastructure/ib-gateway/README.md). Prod pins the
     # same tag via remote-deploy.sh's IB_GATEWAY_IMAGE.
-    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.51.1e@sha256:85975f493bcacc8341cb42e6946c460868d165e5f64d9924b1958c8f03e7bee4}
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.52.1c@sha256:a9ea85f2a623a4ec8b3e0c9e5c61118e7e4676f36723f3ca407d6f6f8c8fa16e}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
     cpu_shares: 1024
@@ -746,7 +746,7 @@ services:
       start_period: 20s
 
   loki:
-    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    image: grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
     container_name: fxvol-loki
     profiles: ["obs"]
     # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
@@ -773,7 +773,7 @@ services:
   # successor (promtail is end-of-life upstream). Same pipeline, converted
   # with `alloy convert`; see obs/alloy.alloy.
   alloy:
-    image: grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
+    image: grafana/alloy:v1.22.0@sha256:9acc2529bc1edb7f5b2bd801dd8334ebc80c158e3a9e5526ecd7c9a273d43189
     container_name: fxvol-alloy
     profiles: ["obs"]
     mem_limit: 128m   # #415: ~40 MB idle with the obs set; same cap as otel-collector
